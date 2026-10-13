@@ -1,0 +1,15 @@
+[Unit]
+Description=Jarvis - assistente personale su Telegram
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=jarvis
+WorkingDirectory=/home/jarvis/jarvis
+ExecStart=/home/jarvis/jarvis/.venv/bin/python -m jarvis
+# Se si ferma per qualsiasi motivo, riparte dopo 10 secondi
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
