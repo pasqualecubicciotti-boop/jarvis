@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -16,7 +18,8 @@ log = logging.getLogger("jarvis.agent")
 SYSTEM_PROMPT = (
     "Sei Jarvis, l'assistente personale del tuo unico utente, che parla con te su Telegram. "
     "Rispondi in italiano, in modo breve, chiaro e cordiale. "
-    "Per sapere data e ora usa sempre lo strumento apposito, non indovinare. "
+    "Quando l'utente chiede un promemoria con un orario, salvalo con l'orario preciso: "
+    "a quell'ora Jarvis gli scrive da solo su Telegram. "
     "Se non sai o non puoi fare qualcosa, dillo onestamente. "
     "Le azioni che inviano, prenotano o pagano richiedono la conferma dell'utente: "
     "non aggirare mai questa regola."
@@ -96,6 +99,10 @@ class Agent:
 
     # ---- interno ------------------------------------------------------
 
+    def _system(self) -> str:
+        now = datetime.now(ZoneInfo(self.settings.timezone))
+        return f"{SYSTEM_PROMPT}\nAdesso è {now:%A %d/%m/%Y %H:%M} (fuso {self.settings.timezone})."
+
     def _chat(self, chat_id: int) -> _Chat:
         return self._chats.setdefault(chat_id, _Chat())
 
@@ -122,7 +129,7 @@ class Agent:
                 response = await self.client.messages.create(
                     model=self.settings.model,
                     max_tokens=self.settings.max_tokens,
-                    system=SYSTEM_PROMPT,
+                    system=self._system(),
                     tools=self.tools.to_api(),
                     messages=chat.history,
                     output_config={"effort": self.settings.effort},

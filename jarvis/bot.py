@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -15,6 +16,7 @@ from telegram.ext import (
 
 from .agent import Agent, Reply
 from .config import Settings
+from .reminders import ReminderStore
 
 log = logging.getLogger("jarvis.bot")
 
@@ -43,9 +45,29 @@ async def _send(bot, chat_id: int, reply: Reply) -> None:
 
 
 class JarvisBot:
-    def __init__(self, settings: Settings, agent: Agent):
+    def __init__(self, settings: Settings, agent: Agent, reminders: ReminderStore | None = None):
         self.settings = settings
         self.agent = agent
+        self.reminders = reminders
+
+    async def notify_owner(self, bot, text: str) -> None:
+        """Scrive al proprietario di propria iniziativa (usato da promemoria e, in futuro, da altri compiti)."""
+        await bot.send_message(chat_id=self.settings.owner_id, text=text)
+
+    async def check_reminders(self, context: ContextTypes.DEFAULT_TYPE) -> None:
+        """Ogni 30 secondi: avvisa dei promemoria scaduti. Se l'invio fallisce, riprova al giro dopo."""
+        if not self.reminders:
+            return
+        now = self.reminders.now()
+        for item in self.reminders.due(now):
+            late = now - datetime.fromisoformat(item["due"]).replace(tzinfo=self.reminders.tz)
+            note = " (in ritardo)" if late > timedelta(minutes=5) else ""
+            try:
+                await self.notify_owner(context.bot, f"⏰ Promemoria{note}: {item['text']}")
+            except Exception as exc:
+                self.agent.usage.record_error(f"Invio promemoria {item['id']}: {type(exc).__name__}: {exc}")
+                continue
+            self.reminders.mark_done(item["id"])
 
     def build_application(self) -> Application:
         app = Application.builder().token(self.settings.telegram_token).build()
@@ -59,6 +81,10 @@ class JarvisBot:
             CallbackQueryHandler(self.on_button, pattern="^confirm:(yes|no)$")
         )
         app.add_error_handler(self.on_error)
+        if app.job_queue is None:
+            log.warning("JobQueue non disponibile: i promemoria non verranno inviati")
+        else:
+            app.job_queue.run_repeating(self.check_reminders, interval=30, first=5)
         return app
 
     async def on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

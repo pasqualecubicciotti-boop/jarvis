@@ -1,7 +1,7 @@
 # Jarvis – il tuo assistente personale su Telegram
 
 Jarvis è un bot Telegram che risponde **solo a te** e usa l'intelligenza artificiale di Anthropic (Claude).
-Per ora sa: dirti data e ora, salvare promemoria in un file, elencarli.
+Per ora sa: dirti data e ora, salvare promemoria in un file, elencarli e **scriverti da solo su Telegram all'ora giusta**.
 
 > Costi: paghi solo l'uso della chiave Anthropic (con il modello predefinito, molto economico) e l'affitto del server.
 > Jarvis ha un limite giornaliero di richieste, così non ti arrivano brutte sorprese.
@@ -81,11 +81,11 @@ Comandi utili:
 
 Dopo aver cambiato il file `.env`, esegui `systemctl restart jarvis`.
 
-**Aggiornare Jarvis in futuro:**
+**Perché resta acceso 24 ore su 24:** il server Hetzner è sempre acceso e il servizio `jarvis` parte con il server e riparte da solo dopo uno stop o un errore. Non devi tenere aperto il tuo computer né la finestra nera. Puoi controllare in qualsiasi momento con `systemctl status jarvis`.
+
+**Aggiornare Jarvis in futuro** (da root sul server):
 ```
-su - jarvis
-cd jarvis && git pull && .venv/bin/pip install -r requirements.txt
-exit
+su - jarvis -c 'cd jarvis && git pull && .venv/bin/pip install -r requirements.txt'
 systemctl restart jarvis
 ```
 
@@ -94,6 +94,10 @@ systemctl restart jarvis
 ## Come si usa
 
 Scrivigli normalmente: *"Che giorno è oggi?"*, *"Ricordami di chiamare Anna domani alle 9"*, *"Quali promemoria ho?"*.
+
+**Promemoria con avviso.** Se indichi un orario ("domani alle 9", "tra due ore"), Jarvis ti scrive da solo su Telegram a quell'ora. Controlla ogni 30 secondi. Se il server era spento in quel momento, ti avvisa appena riparte, aggiungendo "(in ritardo)". Se non indichi un orario, il promemoria viene solo salvato.
+
+**Jarvis può contattarti di sua iniziativa.** Questa è la base per i compiti futuri (ricerca lavoro, progetto KDP, ecc.): qualsiasi compito automatico potrà scriverti su Telegram. Le **telefonate** non ci sono ancora: richiedono un servizio a parte (per esempio Twilio) e, come ogni azione che esce da Jarvis, passeranno dalla tua conferma sì/no.
 
 Comandi: `/start` saluto · `/nuova` dimentica la conversazione · `/stato` richieste e errori di oggi.
 
