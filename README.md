@@ -99,7 +99,13 @@ Scrivigli normalmente: *"Che giorno è oggi?"*, *"Ricordami di chiamare Anna dom
 
 **Jarvis può contattarti di sua iniziativa.** Questa è la base per i compiti futuri (ricerca lavoro, progetto KDP, ecc.): qualsiasi compito automatico potrà scriverti su Telegram. Le **telefonate** non ci sono ancora: richiedono un servizio a parte (per esempio Twilio) e, come ogni azione che esce da Jarvis, passeranno dalla tua conferma sì/no.
 
-Comandi: `/start` saluto · `/nuova` dimentica la conversazione · `/stato` richieste e errori di oggi.
+Comandi: `/start` saluto · `/nuova` dimentica la conversazione · `/stato` richieste e errori di oggi · `/memoria` cosa ricorda di te · `/dimentica ID` cancella un appunto.
+
+**Memoria.** Jarvis ha due memorie, entrambe salvate sul server e quindi **non si perdono ai riavvii**:
+- **Appunti su di te** (preferenze, obiettivi, progetti): dì per esempio *"ricorda che cerco lavoro come grafico"*. Jarvis li legge a ogni risposta. Con `/memoria` li vedi, con `/dimentica ID` li cancelli senza usare l'intelligenza artificiale (quindi gratis). Se glielo chiedi a voce, prima ti domanda sì/no. Massimo 100 appunti da 300 caratteri.
+- **Conversazione recente:** gli ultimi 20 messaggi di testo. `/nuova` li cancella.
+
+Non chiedergli di ricordare password, chiavi o numeri di carta. I file della memoria stanno solo sul server, nella cartella `data/`, e non vanno mai su GitHub.
 
 **Conferma sì/no.** Se in futuro Jarvis avrà strumenti che inviano messaggi, prenotano o pagano, prima di agire ti scriverà cosa vuole fare con due bottoni **Sì / No** (puoi anche rispondere scrivendo "sì" o "no"). Senza il tuo sì non succede nulla. Oggi nessuno strumento lo richiede, ma la struttura è già pronta: basta creare lo strumento con `requires_confirmation=True` (vedi `jarvis/tools.py`).
 
@@ -120,6 +126,8 @@ Nota: una singola tua domanda può usare più "richieste" al limite (ad esempio 
 ## Dove sono i dati (cartella `data/`)
 
 - `reminders.json` – i promemoria
+- `memory.json` – gli appunti su di te
+- `history.json` – la conversazione recente
 - `usage.json` – richieste ed errori per giorno
 - `jarvis.log` – registro degli errori
 

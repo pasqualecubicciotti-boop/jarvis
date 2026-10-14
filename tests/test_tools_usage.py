@@ -21,9 +21,10 @@ def test_empty_reminder_rejected(tmp_path):
     raise AssertionError("doveva fallire")
 
 
-def test_no_default_tool_needs_confirmation(tmp_path):
+def test_only_forget_needs_confirmation(tmp_path):
+    # nessuno strumento che invia/prenota/paga; solo la cancellazione di un appunto chiede il sì/no
     reg = build_default_tools(tmp_path, "Europe/Rome")
-    assert not any(t.requires_confirmation for t in reg._tools.values())
+    assert {n for n, t in reg._tools.items() if t.requires_confirmation} == {"forget"}
 
 
 def test_daily_limit_and_errors(tmp_path):

@@ -16,6 +16,7 @@ from telegram.ext import (
 
 from .agent import Agent, Reply
 from .config import Settings
+from .memory import MemoryStore
 from .reminders import ReminderStore
 
 log = logging.getLogger("jarvis.bot")
@@ -45,10 +46,11 @@ async def _send(bot, chat_id: int, reply: Reply) -> None:
 
 
 class JarvisBot:
-    def __init__(self, settings: Settings, agent: Agent, reminders: ReminderStore | None = None):
+    def __init__(self, settings: Settings, agent: Agent, reminders: ReminderStore | None = None, memory: MemoryStore | None = None):
         self.settings = settings
         self.agent = agent
         self.reminders = reminders
+        self.memory = memory
 
     async def notify_owner(self, bot, text: str) -> None:
         """Scrive al proprietario di propria iniziativa (usato da promemoria e, in futuro, da altri compiti)."""
@@ -76,6 +78,8 @@ class JarvisBot:
         app.add_handler(CommandHandler("start", self.on_start, filters=owner))
         app.add_handler(CommandHandler("nuova", self.on_reset, filters=owner))
         app.add_handler(CommandHandler("stato", self.on_status, filters=owner))
+        app.add_handler(CommandHandler("memoria", self.on_memory, filters=owner))
+        app.add_handler(CommandHandler("dimentica", self.on_forget, filters=owner))
         app.add_handler(MessageHandler(owner & filters.TEXT & ~filters.COMMAND, self.on_text))
         app.add_handler(
             CallbackQueryHandler(self.on_button, pattern="^confirm:(yes|no)$")
@@ -90,7 +94,8 @@ class JarvisBot:
     async def on_start(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         await update.effective_message.reply_text(
             "Ciao, sono Jarvis. Scrivimi quello che ti serve.\n"
-            "/nuova – dimentica la conversazione\n/stato – richieste di oggi"
+            "/nuova – dimentica la conversazione\n/stato – richieste di oggi\n"
+            "/memoria – cosa ricordo di te\n/dimentica ID – cancella un appunto"
         )
 
     async def on_reset(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -103,6 +108,25 @@ class JarvisBot:
             f"Oggi: {today['requests']}/{self.agent.usage.daily_limit} richieste, "
             f"{today['errors']} errori. Modello: {self.settings.model}."
         )
+
+    async def on_memory(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        items = self.memory.all() if self.memory else []
+        if not items:
+            await update.effective_message.reply_text("Non ho ancora appunti su di te. Dimmi cosa vuoi che ricordi.")
+            return
+        lines = "\n".join(f"{it['id']} – {it['text']}" for it in items)
+        await update.effective_message.reply_text(
+            f"Cosa ricordo di te ({len(items)}):\n{lines}\n\nPer cancellarne uno: /dimentica ID"
+        )
+
+    async def on_forget(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+        fact_id = context.args[0] if context.args else ""
+        if not fact_id:
+            await update.effective_message.reply_text("Scrivi /dimentica seguito dall'ID (lo vedi con /memoria).")
+        elif self.memory and self.memory.forget(fact_id):
+            await update.effective_message.reply_text("Fatto, l'ho dimenticato.")
+        else:
+            await update.effective_message.reply_text("Non trovo nessun appunto con quell'ID.")
 
     async def on_text(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         chat_id = update.effective_chat.id

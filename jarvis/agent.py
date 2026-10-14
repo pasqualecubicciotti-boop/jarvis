@@ -10,8 +10,8 @@ from typing import Any
 import anthropic
 
 from .config import Settings
-from .tools import GIORNI
-from .tools import ToolRegistry
+from .memory import ChatLog, MemoryStore, text_only
+from .tools import GIORNI, ToolRegistry
 from .usage import UsageTracker
 
 log = logging.getLogger("jarvis.agent")
@@ -21,6 +21,7 @@ SYSTEM_PROMPT = (
     "Rispondi in italiano, in modo breve, chiaro e cordiale. "
     "Quando l'utente chiede un promemoria con un orario, salvalo con l'orario preciso: "
     "a quell'ora Jarvis gli scrive da solo su Telegram. "
+    "Se l'utente ti chiede di ricordare qualcosa, o ti dice un fatto importante e stabile su di sé, salvalo con lo strumento 'remember'. "
     "Se non sai o non puoi fare qualcosa, dillo onestamente. "
     "Le azioni che inviano, prenotano o pagano richiedono la conferma dell'utente: "
     "non aggirare mai questa regola. "
@@ -47,6 +48,7 @@ class _Pending:
 
 @dataclass
 class _Chat:
+    chat_id: int = 0
     history: list[dict] = field(default_factory=list)
     pending: _Pending | None = None
     checkpoint: int = 0
@@ -59,11 +61,15 @@ class Agent:
         tools: ToolRegistry,
         usage: UsageTracker,
         client: Any | None = None,
+        memory: MemoryStore | None = None,
+        chat_log: ChatLog | None = None,
     ):
         self.settings = settings
         self.tools = tools
         self.usage = usage
         self.client = client or anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
+        self.memory = memory
+        self.chat_log = chat_log
         self._chats: dict[int, _Chat] = {}
 
     # ---- API pubblica -------------------------------------------------
@@ -73,6 +79,8 @@ class Agent:
 
     def reset(self, chat_id: int) -> None:
         self._chats.pop(chat_id, None)
+        if self.chat_log:
+            self.chat_log.clear(chat_id)
 
     async def handle_message(self, chat_id: int, text: str) -> Reply:
         chat = self._chat(chat_id)
@@ -102,13 +110,27 @@ class Agent:
 
     # ---- interno ------------------------------------------------------
 
+    def _system(self) -> str:
+        """Istruzioni fisse + appunti salvati. Cambia solo quando cambiano gli appunti."""
+        return SYSTEM_PROMPT + (self.memory.render() if self.memory else "")
+
     def _stamp(self) -> str:
         """Data e ora vanno nel messaggio dell'utente, mai nelle istruzioni di sistema: queste devono restare identiche."""
         now = datetime.now(ZoneInfo(self.settings.timezone))
         return f"[Adesso: {GIORNI[now.weekday()]} {now:%d/%m/%Y %H:%M}, fuso {self.settings.timezone}]"
 
     def _chat(self, chat_id: int) -> _Chat:
-        return self._chats.setdefault(chat_id, _Chat())
+        if chat_id not in self._chats:
+            saved = self.chat_log.load(chat_id) if self.chat_log else []
+            self._chats[chat_id] = _Chat(chat_id=chat_id, history=saved)
+        return self._chats[chat_id]
+
+    def _persist(self, chat: _Chat) -> None:
+        if self.chat_log:
+            try:
+                self.chat_log.save(chat.chat_id, text_only(chat.history, MAX_HISTORY))
+            except OSError as exc:
+                self.usage.record_error(f"Salvataggio conversazione: {exc}")
 
     @staticmethod
     def _trim(chat: _Chat) -> None:
@@ -133,7 +155,7 @@ class Agent:
                 response = await self.client.messages.create(
                     model=self.settings.model,
                     max_tokens=self.settings.max_tokens,
-                    system=SYSTEM_PROMPT,
+                    system=self._system(),
                     thinking={"type": "disabled"},
                     tools=self.tools.to_api(),
                     messages=chat.history,
@@ -161,6 +183,7 @@ class Agent:
                 text = text or "Non posso aiutarti con questa richiesta."
             elif response.stop_reason == "max_tokens":
                 text = (text + "\n\n[risposta troncata: limite di lunghezza raggiunto]").strip()
+            self._persist(chat)
             return Reply(text or "(nessuna risposta)")
 
         self.usage.record_error("Troppi giri di strumenti")

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable
 from zoneinfo import ZoneInfo
 
+from .memory import MemoryStore
 from .reminders import ReminderStore
 
 GIORNI = ["lunedì", "martedì", "mercoledì", "giovedì", "venerdì", "sabato", "domenica"]
@@ -51,9 +52,33 @@ class ToolRegistry:
         return [t.to_api() for t in self._tools.values()]
 
 
-def build_default_tools(data_dir: Path, timezone: str, store: ReminderStore | None = None) -> ToolRegistry:
+def build_default_tools(
+    data_dir: Path,
+    timezone: str,
+    store: ReminderStore | None = None,
+    memory: MemoryStore | None = None,
+) -> ToolRegistry:
     tz = ZoneInfo(timezone)
     store = store or ReminderStore(data_dir, timezone)
+    memory = memory or MemoryStore(data_dir, timezone)
+
+    def remember(args: dict) -> str:
+        item, is_new = memory.add(str(args.get("text", "")))
+        return f"Appunto salvato (id {item['id']})." if is_new else f"Lo sapevo già (id {item['id']})."
+
+    def list_memories(_: dict) -> str:
+        items = memory.all()
+        if not items:
+            return "Nessun appunto salvato."
+        return "\n".join(f"- ({it['id']}) {it['text']}" for it in items)
+
+    def forget(args: dict) -> str:
+        fid = str(args.get("id", "")).strip()
+        return "Appunto dimenticato." if memory.forget(fid) else f"Nessun appunto con id {fid}."
+
+    def describe_forget(args: dict) -> str:
+        it = memory.get(str(args.get("id", "")).strip())
+        return f"Dimenticare l'appunto: «{it['text']}»" if it else "Dimenticare un appunto (id non trovato)"
 
     def get_datetime(_: dict) -> str:
         now = datetime.now(tz)
@@ -122,6 +147,38 @@ def build_default_tools(data_dir: Path, timezone: str, store: ReminderStore | No
                     "required": ["text"],
                 },
                 func=save_reminder,
+            ),
+            Tool(
+                name="remember",
+                description=(
+                    "Salva un appunto duraturo sull'utente (preferenze, obiettivi, progetti, fatti stabili). "
+                    "Usalo quando l'utente chiede di ricordare qualcosa o condivide un'informazione importante che servirà in futuro. "
+                    "Scrivi l'appunto in una frase breve e autonoma. Non salvare dati sensibili (password, chiavi, numeri di carta)."
+                ),
+                input_schema={
+                    "type": "object",
+                    "properties": {"text": {"type": "string", "description": "L'appunto, una frase breve"}},
+                    "required": ["text"],
+                },
+                func=remember,
+            ),
+            Tool(
+                name="list_memories",
+                description="Elenca gli appunti salvati sull'utente, con il loro id.",
+                input_schema={"type": "object", "properties": {}},
+                func=list_memories,
+            ),
+            Tool(
+                name="forget",
+                description="Cancella un appunto salvato, dato il suo id (vedi list_memories). L'utente deve confermare.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"id": {"type": "string", "description": "id dell'appunto"}},
+                    "required": ["id"],
+                },
+                func=forget,
+                requires_confirmation=True,
+                describe=describe_forget,
             ),
             Tool(
                 name="list_reminders",

@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from .agent import Agent
 from .bot import JarvisBot
 from .config import ConfigError, Settings
+from .memory import ChatLog, MemoryStore
 from .reminders import ReminderStore
 from .tools import build_default_tools
 from .usage import UsageTracker, setup_logging
@@ -22,9 +23,10 @@ def main() -> None:
     setup_logging(settings.data_dir)
     usage = UsageTracker(settings.data_dir, settings.daily_limit, settings.timezone)
     reminders = ReminderStore(settings.data_dir, settings.timezone)
-    tools = build_default_tools(settings.data_dir, settings.timezone, reminders)
-    agent = Agent(settings, tools, usage)
-    app = JarvisBot(settings, agent, reminders).build_application()
+    memory = MemoryStore(settings.data_dir, settings.timezone)
+    tools = build_default_tools(settings.data_dir, settings.timezone, reminders, memory)
+    agent = Agent(settings, tools, usage, memory=memory, chat_log=ChatLog(settings.data_dir))
+    app = JarvisBot(settings, agent, reminders, memory).build_application()
     app.run_polling(drop_pending_updates=True)
 
 
