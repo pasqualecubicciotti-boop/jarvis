@@ -12,6 +12,19 @@ async def test_plain_answer_uses_cheap_defaults(make_agent):
     assert call["model"] == "claude-haiku-5-5"
     assert call["max_tokens"] == 1024
     assert call["output_config"] == {"effort": "low"}
+    assert call["thinking"] == {"type": "disabled"}
+    assert "[Adesso:" in call["messages"][0]["content"]  # data/ora nel messaggio, non nel system
+
+
+async def test_system_prompt_never_changes_between_requests(make_agent):
+    """Regressione: un system prompt variabile faceva rifiutare i blocchi di ragionamento dall'API."""
+    agent, client = make_agent([make_message(text("a")), make_message(text("b"))])
+    await agent.handle_message(1, "uno")
+    agent._stamp = lambda: "[Adesso: un altro momento]"
+    await agent.handle_message(1, "due")
+    assert client.calls[0]["system"] == client.calls[1]["system"]
+    # i messaggi precedenti restano identici (la storia si estende soltanto)
+    assert client.calls[1]["messages"][0] == client.calls[0]["messages"][0]
 
 
 async def test_tool_loop_saves_reminder(make_agent):
@@ -84,7 +97,7 @@ async def test_api_error_is_logged_and_history_stays_valid(make_agent, usage):
     reply = await agent.handle_message(1, "uno")
     assert "problema" in reply.text and usage.today()["errors"] == 1
     await agent.handle_message(1, "due")
-    assert client.calls[1]["messages"] == [{"role": "user", "content": "due"}]
+    assert len(client.calls[1]["messages"]) == 1 and client.calls[1]["messages"][0]["content"].endswith("due")
 
 
 async def test_unknown_tool_and_refusal(make_agent):

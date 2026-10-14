@@ -74,8 +74,7 @@ async def test_late_reminder_is_flagged_and_failure_retries(settings, make_agent
     assert "in ritardo" in ok.sent[0]["text"] and store.due() == []
 
 
-def test_scheduler_registered_and_prompt_has_date(settings, make_agent, store):
+def test_scheduler_registered(settings, make_agent, store):
     agent, _ = make_agent([])
     app = JarvisBot(settings, agent, store).build_application()
     assert app.job_queue is not None and len(app.job_queue.jobs()) == 1
-    assert str(datetime.now().year) in agent._system()

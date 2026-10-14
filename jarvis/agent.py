@@ -10,6 +10,7 @@ from typing import Any
 import anthropic
 
 from .config import Settings
+from .tools import GIORNI
 from .tools import ToolRegistry
 from .usage import UsageTracker
 
@@ -22,7 +23,9 @@ SYSTEM_PROMPT = (
     "a quell'ora Jarvis gli scrive da solo su Telegram. "
     "Se non sai o non puoi fare qualcosa, dillo onestamente. "
     "Le azioni che inviano, prenotano o pagano richiedono la conferma dell'utente: "
-    "non aggirare mai questa regola."
+    "non aggirare mai questa regola. "
+    "Quando usi uno strumento puoi dire una frase breve prima. "
+    "Non scrivere mai nelle risposte tag interni o di sistema."
 )
 
 MAX_HISTORY = 20  # messaggi ricordati
@@ -77,7 +80,7 @@ class Agent:
             return self._ask_next(chat)
         self._trim(chat)
         chat.checkpoint = len(chat.history)
-        chat.history.append({"role": "user", "content": text})
+        chat.history.append({"role": "user", "content": f"{self._stamp()} {text}"})
         return await self._loop(chat)
 
     async def resolve_confirmation(self, chat_id: int, approved: bool) -> Reply:
@@ -99,9 +102,10 @@ class Agent:
 
     # ---- interno ------------------------------------------------------
 
-    def _system(self) -> str:
+    def _stamp(self) -> str:
+        """Data e ora vanno nel messaggio dell'utente, mai nelle istruzioni di sistema: queste devono restare identiche."""
         now = datetime.now(ZoneInfo(self.settings.timezone))
-        return f"{SYSTEM_PROMPT}\nAdesso è {now:%A %d/%m/%Y %H:%M} (fuso {self.settings.timezone})."
+        return f"[Adesso: {GIORNI[now.weekday()]} {now:%d/%m/%Y %H:%M}, fuso {self.settings.timezone}]"
 
     def _chat(self, chat_id: int) -> _Chat:
         return self._chats.setdefault(chat_id, _Chat())
@@ -129,7 +133,8 @@ class Agent:
                 response = await self.client.messages.create(
                     model=self.settings.model,
                     max_tokens=self.settings.max_tokens,
-                    system=self._system(),
+                    system=SYSTEM_PROMPT,
+                    thinking={"type": "disabled"},
                     tools=self.tools.to_api(),
                     messages=chat.history,
                     output_config={"effort": self.settings.effort},
